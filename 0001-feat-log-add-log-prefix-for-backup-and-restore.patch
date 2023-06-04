@@ -1,0 +1,131 @@
+From e440ba2a1cbe4c5eabaad2c8a99722adfb1a4996 Mon Sep 17 00:00:00 2001
+From: hwzhuhao <923196325@qq.com>
+Date: Sun, 4 Jun 2023 16:53:39 +0800
+Subject: [PATCH 1/2] feat(log): add log prefix for backup and restore
+
+---
+ pkg/cmd/cli/backup/logs.go           | 28 +++++++++++++++++++++++++---
+ pkg/controller/backup_controller.go  | 15 ++++++++++-----
+ pkg/controller/restore_controller.go | 11 ++++++++---
+ 3 files changed, 43 insertions(+), 11 deletions(-)
+
+diff --git a/pkg/cmd/cli/backup/logs.go b/pkg/cmd/cli/backup/logs.go
+index 554fa171..476d8caf 100644
+--- a/pkg/cmd/cli/backup/logs.go
++++ b/pkg/cmd/cli/backup/logs.go
+@@ -19,7 +19,9 @@ package backup
+ import (
+ 	"context"
+ 	"fmt"
++	"io/ioutil"
+ 	"os"
++	"strings"
+ 	"time"
+ 
+ 	"github.com/spf13/cobra"
+@@ -66,10 +68,30 @@ func NewLogsCommand(f client.Factory) *cobra.Command {
+ 			case velerov1api.BackupPhaseCompleted, velerov1api.BackupPhasePartiallyFailed, velerov1api.BackupPhaseFailed:
+ 				// terminal phases, do nothing.
+ 			default:
+-				cmd.Exit("Logs for backup %q are not available until it's finished processing. Please wait "+
+-					"until the backup has a phase of Completed or Failed and try again.", backupName)
++				//cmd.Exit("Logs for backup %q are not available until it's finished processing. Please wait "+
++				//	"until the backup has a phase of Completed or Failed and try again.", backupName)
++				var tmpFileName string
++				flag := false
++				infos, err := ioutil.ReadDir("/opt/tmp")
++				if err != nil {
++					cmd.Exit("Can't read dir, %s", err.Error())
++				}
++				for _, info := range infos {
++					fmt.Printf("file name = %s", info.Name())
++					if strings.Contains(info.Name(), "log-"+backupName) {
++						flag = true
++						tmpFileName = info.Name()
++					}
++				}
++				if flag {
++					tmpLog, err := ioutil.ReadFile("/opt/tmp/" + tmpFileName)
++					if err != nil {
++						cmd.Exit("Can't read file content, %s", err.Error())
++					}
++					cmd.Exit(string(tmpLog))
++				}
++				cmd.Exit("No matching file found")
+ 			}
+-
+ 			err = downloadrequest.Stream(context.Background(), kbClient, f.Namespace(), backupName, velerov1api.DownloadTargetKindBackupLog, os.Stdout, timeout, insecureSkipTLSVerify, caCertFile)
+ 			cmd.CheckError(err)
+ 		},
+diff --git a/pkg/controller/backup_controller.go b/pkg/controller/backup_controller.go
+index 23f00df7..77f40751 100644
+--- a/pkg/controller/backup_controller.go
++++ b/pkg/controller/backup_controller.go
+@@ -1,4 +1,4 @@
+-/*
++/*/*
+ Copyright The Velero Contributors.
+ 
+ Licensed under the Apache License, Version 2.0 (the "License");
+@@ -591,21 +591,26 @@ func (c *backupController) validateAndGetSnapshotLocations(backup *velerov1api.B
+ func (c *backupController) runBackup(backup *pkgbackup.Request) error {
+ 	c.logger.WithField(Backup, kubeutil.NamespaceAndName(backup)).Info("Setting up backup log")
+ 
+-	logFile, err := ioutil.TempFile("", "")
++	//logFile, err := ioutil.TempFile("", "")
++	logFile, err := ioutil.TempFile("", "log-"+backup.Name+"-*")
+ 	if err != nil {
+ 		return errors.Wrap(err, "error creating temp file for backup log")
+ 	}
++	plainLogFile, err := os.Create("/logs/log-" + backup.Name)
++	if err != nil {
++		return errors.Wrap(err, "error creating plain temp file for backup log")
++	}
+ 	gzippedLogFile := gzip.NewWriter(logFile)
+ 	// Assuming we successfully uploaded the log file, this will have already been closed below. It is safe to call
+ 	// close multiple times. If we get an error closing this, there's not really anything we can do about it.
+ 	defer gzippedLogFile.Close()
+-	defer closeAndRemoveFile(logFile, c.logger.WithField(Backup, kubeutil.NamespaceAndName(backup)))
++	//defer closeAndRemoveFile(logFile, c.logger.WithField(Backup, kubeutil.NamespaceAndName(backup)))
+ 
+ 	// Log the backup to both a backup log file and to stdout. This will help see what happened if the upload of the
+ 	// backup log failed for whatever reason.
+ 	logger := logging.DefaultLogger(c.backupLogLevel, c.formatFlag)
+-	logger.Out = io.MultiWriter(os.Stdout, gzippedLogFile)
+-
++	//logger.Out = io.MultiWriter(os.Stdout, gzippedLogFile)
++	logger.Out = io.MultiWriter(os.Stdout, gzippedLogFile, plainLogFile)
+ 	logCounter := logging.NewLogHook()
+ 	logger.Hooks.Add(logCounter)
+ 
+diff --git a/pkg/controller/restore_controller.go b/pkg/controller/restore_controller.go
+index ad2d2e22..54efe5c0 100644
+--- a/pkg/controller/restore_controller.go
++++ b/pkg/controller/restore_controller.go
+@@ -673,15 +673,20 @@ type restoreLogger struct {
+ }
+ 
+ func newRestoreLogger(restore *api.Restore, logLevel logrus.Level, logFormat logging.Format) (*restoreLogger, error) {
+-	file, err := ioutil.TempFile("", "")
++	//file, err := ioutil.TempFile("", "")
++	file, err := ioutil.TempFile("", "log-"+restore.Name+"-*")
+ 	if err != nil {
+ 		return nil, errors.Wrap(err, "error creating temp file")
+ 	}
++	plainLogFile, err := os.Create("/logs/log-" + restore.Name)
++	if err != nil {
++		return nil, errors.Wrap(err, "error creating plain temp file for restore log")
++	}
+ 	w := gzip.NewWriter(file)
+ 
+ 	logger := logging.DefaultLogger(logLevel, logFormat)
+-	logger.Out = io.MultiWriter(os.Stdout, w)
+-
++	//logger.Out = io.MultiWriter(os.Stdout, w)
++	logger.Out = io.MultiWriter(os.Stdout, w, plainLogFile)
+ 	return &restoreLogger{
+ 		FieldLogger: logger.WithField("restore", kubeutil.NamespaceAndName(restore)),
+ 		file:        file,
+-- 
+2.16.2
+

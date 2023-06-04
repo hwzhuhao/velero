@@ -1,0 +1,107 @@
+From bc69d158d7c84267c75c43b5c9b8c1887891c68c Mon Sep 17 00:00:00 2001
+From: hwzhuhao <923196325@qq.com>
+Date: Sun, 4 Jun 2023 17:38:23 +0800
+Subject: [PATCH 2/2] feat(backup): update backup resource
+
+---
+ pkg/backup/item_backupper.go |  8 +++---
+ pkg/backup/item_collector.go | 58 ++++++++++++++++++++++++++++++++------------
+ 2 files changed, 46 insertions(+), 20 deletions(-)
+
+diff --git a/pkg/backup/item_backupper.go b/pkg/backup/item_backupper.go
+index aefbb85c..55b2a9ac 100644
+--- a/pkg/backup/item_backupper.go
++++ b/pkg/backup/item_backupper.go
+@@ -105,10 +105,10 @@ func (ib *itemBackupper) backupItem(logger logrus.FieldLogger, obj runtime.Unstr
+ 			return false, nil
+ 		}
+ 
+-		if !ib.backupRequest.ResourceIncludesExcludes.ShouldInclude(groupResource.String()) {
+-			log.Info("Excluding item because resource is excluded")
+-			return false, nil
+-		}
++		//if !ib.backupRequest.ResourceIncludesExcludes.ShouldInclude(groupResource.String()) {
++		//	log.Info("Excluding item because resource is excluded")
++		//	return false, nil
++		//}
+ 	}
+ 
+ 	if metadata.GetDeletionTimestamp() != nil {
+diff --git a/pkg/backup/item_collector.go b/pkg/backup/item_collector.go
+index 88be4e07..0afa6753 100644
+--- a/pkg/backup/item_collector.go
++++ b/pkg/backup/item_collector.go
+@@ -185,28 +185,54 @@ func (r *itemCollector) getResourceItems(log logrus.FieldLogger, gv schema.Group
+ 	// If the resource we are backing up is NOT namespaces, and it is cluster-scoped, check to see if
+ 	// we should include it based on the IncludeClusterResources setting.
+ 	if gr != kuberesource.Namespaces && clusterScoped {
+-		if r.backupRequest.Spec.IncludeClusterResources == nil {
+-			if !r.backupRequest.NamespaceIncludesExcludes.IncludeEverything() {
+-				// when IncludeClusterResources == nil (auto), only directly
+-				// back up cluster-scoped resources if we're doing a full-cluster
+-				// (all namespaces) backup. Note that in the case of a subset of
+-				// namespaces being backed up, some related cluster-scoped resources
+-				// may still be backed up if triggered by a custom action (e.g. PVC->PV).
+-				// If we're processing namespaces themselves, we will not skip here, they may be
+-				// filtered out later.
+-				log.Info("Skipping resource because it's cluster-scoped and only specific namespaces are included in the backup")
+-				return nil, nil
+-			}
+-		} else if !*r.backupRequest.Spec.IncludeClusterResources {
++		//if r.backupRequest.Spec.IncludeClusterResources == nil {
++		//	if !r.backupRequest.NamespaceIncludesExcludes.IncludeEverything() {
++		//		// when IncludeClusterResources == nil (auto), only directly
++		//		// back up cluster-scoped resources if we're doing a full-cluster
++		//		// (all namespaces) backup. Note that in the case of a subset of
++		//		// namespaces being backed up, some related cluster-scoped resources
++		//		// may still be backed up if triggered by a custom action (e.g. PVC->PV).
++		//		// If we're processing namespaces themselves, we will not skip here, they may be
++		//		// filtered out later.
++		//		log.Info("Skipping resource because it's cluster-scoped and only specific namespaces are included in the backup")
++		//		return nil, nil
++		//	}
++		//} else if !*r.backupRequest.Spec.IncludeClusterResources {
++		if r.backupRequest.Spec.IncludeClusterResources != nil && !*r.backupRequest.Spec.IncludeClusterResources {
+ 			log.Info("Skipping resource because it's cluster-scoped")
+ 			return nil, nil
+ 		}
+ 	}
+ 
+-	if !r.backupRequest.ResourceIncludesExcludes.ShouldInclude(gr.String()) {
+-		log.Infof("Skipping resource because it's excluded")
+-		return nil, nil
++	log.Infof("resource name is %s, clusterScoped is %t.\n", resource.Name, clusterScoped)
++	if r.backupRequest.Spec.IncludeClusterResources!=nil{
++		// 1.如果不指定资源，则只包含命名空间的资源 include-cluster-resources=false
++		// 2.如果指定资源，指定资源都是集群层面资源，则包含命名空间资源以及集群资源 include-cluster-resources=true
++		// 3.如果指定资源，指定资源都是命名空间资源，则只包含命名空间资源 include-cluster-resources=false
++		// 4.如果指定资源，既有集群资源，也有命名空间资源，则命名空间包含命名空间资源，集群包含集群资源 include-cluster-resources=ni
++		if *r.backupRequest.Spec.IncludeClusterResources{
++			if clusterScoped{
++				if !r.backupRequest.ResourceIncludesExcludes.ShouldInclude(gr.String()){
++					log.Infof("Skipping resource because it's excluded")
++					return nil, nil
++				}
++			}
++		} else {
++			if !r.backupRequest.ResourceIncludesExcludes.ShouldInclude(gr.String()){
++				log.Infof("Skipping resource because it's excluded")
++				return nil, nil
++			}
++		}
++	} else {
++		if !r.backupRequest.ResourceIncludesExcludes.ShouldInclude(gr.String()){
++			log.Infof("Skipping resource because it's excluded")
++			return nil, nil
++		}
+ 	}
++	//if !r.backupRequest.ResourceIncludesExcludes.ShouldInclude(gr.String()) {
++	//	log.Infof("Skipping resource because it's excluded")
++	//	return nil, nil
++	//}
+ 
+ 	if cohabitator, found := r.cohabitatingResources[resource.Name]; found {
+ 		if gv.Group == cohabitator.groupResource1.Group || gv.Group == cohabitator.groupResource2.Group {
+-- 
+2.16.2
+

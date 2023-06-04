@@ -105,10 +105,10 @@ func (ib *itemBackupper) backupItem(logger logrus.FieldLogger, obj runtime.Unstr
 			return false, nil
 		}
 
-		if !ib.backupRequest.ResourceIncludesExcludes.ShouldInclude(groupResource.String()) {
-			log.Info("Excluding item because resource is excluded")
-			return false, nil
-		}
+		//if !ib.backupRequest.ResourceIncludesExcludes.ShouldInclude(groupResource.String()) {
+		//	log.Info("Excluding item because resource is excluded")
+		//	return false, nil
+		//}
 	}
 
 	if metadata.GetDeletionTimestamp() != nil {

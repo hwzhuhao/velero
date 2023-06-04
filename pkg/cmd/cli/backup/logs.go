@@ -19,7 +19,9 @@ package backup
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -66,10 +68,30 @@ func NewLogsCommand(f client.Factory) *cobra.Command {
 			case velerov1api.BackupPhaseCompleted, velerov1api.BackupPhasePartiallyFailed, velerov1api.BackupPhaseFailed:
 				// terminal phases, do nothing.
 			default:
-				cmd.Exit("Logs for backup %q are not available until it's finished processing. Please wait "+
-					"until the backup has a phase of Completed or Failed and try again.", backupName)
+				//cmd.Exit("Logs for backup %q are not available until it's finished processing. Please wait "+
+				//	"until the backup has a phase of Completed or Failed and try again.", backupName)
+				var tmpFileName string
+				flag := false
+				infos, err := ioutil.ReadDir("/opt/tmp")
+				if err != nil {
+					cmd.Exit("Can't read dir, %s", err.Error())
+				}
+				for _, info := range infos {
+					fmt.Printf("file name = %s", info.Name())
+					if strings.Contains(info.Name(), "log-"+backupName) {
+						flag = true
+						tmpFileName = info.Name()
+					}
+				}
+				if flag {
+					tmpLog, err := ioutil.ReadFile("/opt/tmp/" + tmpFileName)
+					if err != nil {
+						cmd.Exit("Can't read file content, %s", err.Error())
+					}
+					cmd.Exit(string(tmpLog))
+				}
+				cmd.Exit("No matching file found")
 			}
-
 			err = downloadrequest.Stream(context.Background(), kbClient, f.Namespace(), backupName, velerov1api.DownloadTargetKindBackupLog, os.Stdout, timeout, insecureSkipTLSVerify, caCertFile)
 			cmd.CheckError(err)
 		},

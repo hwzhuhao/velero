@@ -673,15 +673,20 @@ type restoreLogger struct {
 }
 
 func newRestoreLogger(restore *api.Restore, logLevel logrus.Level, logFormat logging.Format) (*restoreLogger, error) {
-	file, err := ioutil.TempFile("", "")
+	//file, err := ioutil.TempFile("", "")
+	file, err := ioutil.TempFile("", "log-"+restore.Name+"-*")
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating temp file")
+	}
+	plainLogFile, err := os.Create("/logs/log-" + restore.Name)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating plain temp file for restore log")
 	}
 	w := gzip.NewWriter(file)
 
 	logger := logging.DefaultLogger(logLevel, logFormat)
-	logger.Out = io.MultiWriter(os.Stdout, w)
-
+	//logger.Out = io.MultiWriter(os.Stdout, w)
+	logger.Out = io.MultiWriter(os.Stdout, w, plainLogFile)
 	return &restoreLogger{
 		FieldLogger: logger.WithField("restore", kubeutil.NamespaceAndName(restore)),
 		file:        file,

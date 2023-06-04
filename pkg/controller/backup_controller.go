@@ -1,4 +1,4 @@
-/*
+/*/*
 Copyright The Velero Contributors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -591,21 +591,26 @@ func (c *backupController) validateAndGetSnapshotLocations(backup *velerov1api.B
 func (c *backupController) runBackup(backup *pkgbackup.Request) error {
 	c.logger.WithField(Backup, kubeutil.NamespaceAndName(backup)).Info("Setting up backup log")
 
-	logFile, err := ioutil.TempFile("", "")
+	//logFile, err := ioutil.TempFile("", "")
+	logFile, err := ioutil.TempFile("", "log-"+backup.Name+"-*")
 	if err != nil {
 		return errors.Wrap(err, "error creating temp file for backup log")
+	}
+	plainLogFile, err := os.Create("/logs/log-" + backup.Name)
+	if err != nil {
+		return errors.Wrap(err, "error creating plain temp file for backup log")
 	}
 	gzippedLogFile := gzip.NewWriter(logFile)
 	// Assuming we successfully uploaded the log file, this will have already been closed below. It is safe to call
 	// close multiple times. If we get an error closing this, there's not really anything we can do about it.
 	defer gzippedLogFile.Close()
-	defer closeAndRemoveFile(logFile, c.logger.WithField(Backup, kubeutil.NamespaceAndName(backup)))
+	//defer closeAndRemoveFile(logFile, c.logger.WithField(Backup, kubeutil.NamespaceAndName(backup)))
 
 	// Log the backup to both a backup log file and to stdout. This will help see what happened if the upload of the
 	// backup log failed for whatever reason.
 	logger := logging.DefaultLogger(c.backupLogLevel, c.formatFlag)
-	logger.Out = io.MultiWriter(os.Stdout, gzippedLogFile)
-
+	//logger.Out = io.MultiWriter(os.Stdout, gzippedLogFile)
+	logger.Out = io.MultiWriter(os.Stdout, gzippedLogFile, plainLogFile)
 	logCounter := logging.NewLogHook()
 	logger.Hooks.Add(logCounter)
 
